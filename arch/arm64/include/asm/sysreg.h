@@ -24,6 +24,13 @@
 
 #include <asm/opcodes.h>
 
+#ifdef CONFIG_TIMA_RKP
+#include <linux/rkp_entry.h>
+#endif
+
+#define SCTLR_EL1_CP15BEN	(0x1 << 5)
+#define SCTLR_EL1_SED		(0x1 << 8)
+
 /*
  * ARMv8 ARM reserves the following encoding for system registers:
  * (Ref: ARMv8 ARM, Section: "System instruction class encoding overview",
@@ -101,6 +108,7 @@
 #define ID_AA64ISAR0_AES_SHIFT		4
 
 /* id_aa64pfr0 */
+#define ID_AA64PFR0_CSV2_SHIFT		56
 #define ID_AA64PFR0_GIC_SHIFT		24
 #define ID_AA64PFR0_ASIMD_SHIFT		20
 #define ID_AA64PFR0_FP_SHIFT		16

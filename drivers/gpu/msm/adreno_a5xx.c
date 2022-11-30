@@ -250,7 +250,7 @@ static int a5xx_critical_packet_construct(struct adreno_device *adreno_dev)
 		return ret;
 
 	ret = kgsl_allocate_user(&adreno_dev->dev, &crit_pkts_refbuf0,
-		PAGE_SIZE, KGSL_MEMFLAGS_SECURE);
+					PAGE_SIZE, KGSL_MEMFLAGS_SECURE);
 	if (ret)
 		return ret;
 
@@ -1686,8 +1686,9 @@ static int gpmu_set_level(struct adreno_device *adreno_dev, unsigned int val)
 	kgsl_regwrite(KGSL_DEVICE(adreno_dev), A5XX_GPMU_GPMU_VOLTAGE, val);
 
 	do {
-		kgsl_regread(KGSL_DEVICE(adreno_dev), A5XX_GPMU_GPMU_VOLTAGE,
-			&reg);
+		kgsl_regread(KGSL_DEVICE(adreno_dev), A5XX_GPMU_GPMU_VOLTAGE, &reg);
+		if (reg & 0x80000000)
+			pr_err("GPMU pre powerlevel failed retrying... : %08x\n", val);
 	} while ((reg & 0x80000000) && retry--);
 
 	return (reg & 0x80000000) ? -ETIMEDOUT : 0;

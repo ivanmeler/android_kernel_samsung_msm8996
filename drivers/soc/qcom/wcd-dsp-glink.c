@@ -971,7 +971,7 @@ static int wdsp_glink_open(struct inode *inode, struct file *file)
 		ret = -EINVAL;
 		goto err_wq;
 	}
-
+	
 	wpriv->glink_state.link_state = GLINK_LINK_STATE_DOWN;
 	init_completion(&wpriv->rsp_complete);
 	init_waitqueue_head(&wpriv->link_state_wait);

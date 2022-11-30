@@ -407,9 +407,10 @@ static int update_userspace_power(struct sched_params __user *argp)
 	if (!sp)
 		return -ENOMEM;
 
-
+	mutex_lock(&policy_update_mutex);
 	sp->power = allocate_2d_array_uint32_t(node->sp->num_of_freqs);
 	if (IS_ERR_OR_NULL(sp->power)) {
+		mutex_unlock(&policy_update_mutex);
 		ret = PTR_ERR(sp->power);
 		kfree(sp);
 		return ret;
@@ -453,6 +454,7 @@ static int update_userspace_power(struct sched_params __user *argp)
 		}
 	}
 	spin_unlock(&update_lock);
+	mutex_unlock(&policy_update_mutex);
 
 	for_each_possible_cpu(cpu) {
 		if (!pdata_valid[cpu])
@@ -466,6 +468,7 @@ static int update_userspace_power(struct sched_params __user *argp)
 	return 0;
 
 failed:
+	mutex_unlock(&policy_update_mutex);
 	for (i = 0; i < TEMP_DATA_POINTS; i++)
 		kfree(sp->power[i]);
 	kfree(sp->power);
@@ -1051,10 +1054,6 @@ static int msm_core_dev_probe(struct platform_device *pdev)
 	key = "qcom,throttling-temp";
 	ret = of_property_read_u32(node, key, &max_throttling_temp);
 
-	ret = uio_init(pdev);
-	if (ret)
-		return ret;
-
 	ret = msm_core_freq_init();
 	if (ret)
 		goto failed;
@@ -1080,6 +1079,10 @@ static int msm_core_dev_probe(struct platform_device *pdev)
 	schedule_delayed_work(&sampling_work, msecs_to_jiffies(0));
 	cpufreq_register_notifier(&cpu_policy, CPUFREQ_POLICY_NOTIFIER);
 	pm_notifier(system_suspend_handler, 0);
+
+	ret = uio_init(pdev);
+	if (ret)
+		return ret;
 	return 0;
 failed:
 	info = dev_get_drvdata(&pdev->dev);

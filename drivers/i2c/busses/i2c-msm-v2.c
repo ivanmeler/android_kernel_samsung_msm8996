@@ -2648,6 +2648,31 @@ static void i2c_msm_pm_pinctrl_state(struct i2c_msm_ctrl *ctrl,
 }
 
 /*
+ * i2c_msm_pinctrl_set_slave_power_off: set blsp pinctrl to GPIO @ slave device IO power is off
+ * 
+ * apply model devicetree and pinctrl devicetree files
+ * pinctrl: i2c_pwr_off
+ * set gpio & pull down
+ */
+void i2c_msm_pinctrl_set_slave_power_off(struct i2c_adapter *adap)
+{
+	struct i2c_msm_ctrl *ctrl = container_of(adap, struct i2c_msm_ctrl, adapter);
+	struct pinctrl_state *pins_state;
+
+	dev_info(ctrl->dev, "%s called\n", __func__);
+
+	pins_state = i2c_msm_rsrcs_gpio_get_state(ctrl, I2C_MSM_PINCTRL_POWER_OFF);
+	if (!IS_ERR_OR_NULL(pins_state)) {
+		int ret = pinctrl_select_state(ctrl->rsrcs.pinctrl, pins_state);
+		if (ret)
+			dev_err(ctrl->dev, "%s: error pinctrl_select_state, err:%d\n", __func__, ret);
+	} else {
+		dev_err(ctrl->dev, "%s: error pinctrl get state: is not configured\n", __func__);
+	}
+}
+EXPORT_SYMBOL(i2c_msm_pinctrl_set_slave_power_off);
+
+/*
  * i2c_msm_rsrcs_clk_init: get clocks and set rate
  *
  * @return zero on success or negative error code
@@ -3018,7 +3043,7 @@ static int i2c_msm_init(void)
 {
 	return platform_driver_register(&i2c_msm_driver);
 }
-subsys_initcall(i2c_msm_init);
+arch_initcall(i2c_msm_init);
 
 static void i2c_msm_exit(void)
 {

@@ -5639,6 +5639,7 @@ static int  _qcrypto_suspend(struct platform_device *pdev, pm_message_t state)
 	if (!cp->ce_support.clk_mgmt_sus_res)
 		return 0;
 	spin_lock_irqsave(&cp->lock, flags);
+	pr_err("enter suspend: pengine->bw_state = %d, high_bw_req = %d\n", pengine->bw_state, pengine->high_bw_req); 
 	switch (pengine->bw_state) {
 	case BUS_NO_BANDWIDTH:
 		if (pengine->high_bw_req == false)
@@ -5667,6 +5668,7 @@ static int  _qcrypto_suspend(struct platform_device *pdev, pm_message_t state)
 	}
 
 	spin_unlock_irqrestore(&cp->lock, flags);
+	pr_err("exit suspend: pengine->bw_state = %d, ret = %d\n", pengine->bw_state, ret); 
 	if (ret)
 		return ret;
 	else {
@@ -5691,6 +5693,7 @@ static int  _qcrypto_resume(struct platform_device *pdev)
 	if (!cp->ce_support.clk_mgmt_sus_res)
 		return 0;
 	spin_lock_irqsave(&cp->lock, flags);
+	pr_err("enter resume: pengine->bw_state = %d, high_bw_req = %d, cp->req_queue.qlen= %d, pengine->req_queue.qlen= %d\n", pengine->bw_state, pengine->high_bw_req, cp->req_queue.qlen, pengine->req_queue.qlen); 
 	if (pengine->bw_state == BUS_SUSPENDED) {
 		spin_unlock_irqrestore(&cp->lock, flags);
 		if (qce_pm_table.resume)
@@ -5708,7 +5711,7 @@ static int  _qcrypto_resume(struct platform_device *pdev)
 		}
 	} else
 		ret = -EBUSY;
-
+	pr_err("after resume: pengine->bw_state = %d, high_bw_req = %d, ret = %d\n", pengine->bw_state, pengine->high_bw_req, ret);
 	spin_unlock_irqrestore(&cp->lock, flags);
 	return ret;
 }

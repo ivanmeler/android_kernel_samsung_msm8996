@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -831,7 +831,7 @@ static void dci_process_ctrl_status(unsigned char *buf, int len, int token)
 	read_len += sizeof(struct diag_ctrl_dci_status);
 
 	for (i = 0; i < header->count; i++) {
-		if (read_len > len) {
+		if (read_len > (len - 2)) {
 			pr_err("diag: In %s, Invalid length len: %d\n",
 			       __func__, len);
 			return;
@@ -1362,10 +1362,12 @@ void diag_dci_channel_open_work(struct work_struct *work)
 
 void diag_dci_notify_client(int peripheral_mask, int data, int proc)
 {
-	int stat;
+	int stat = 0;
 	struct siginfo info;
 	struct list_head *start, *temp;
 	struct diag_dci_client_tbl *entry = NULL;
+	struct pid *pid_struct = NULL;
+	struct task_struct *dci_task = NULL;
 
 	memset(&info, 0, sizeof(struct siginfo));
 	info.si_code = SI_QUEUE;
@@ -1383,20 +1385,32 @@ void diag_dci_notify_client(int peripheral_mask, int data, int proc)
 			continue;
 		if (entry->client_info.notification_list & peripheral_mask) {
 			info.si_signo = entry->client_info.signal_type;
-			if (entry->client &&
-				entry->tgid == entry->client->tgid) {
-				DIAG_LOG(DIAG_DEBUG_DCI,
-					"entry tgid = %d, dci client tgid = %d\n",
-					entry->tgid, entry->client->tgid);
-				stat = send_sig_info(
-					entry->client_info.signal_type,
-					&info, entry->client);
-				if (stat)
-					pr_err("diag: Err sending dci signal to client, signal data: 0x%x, stat: %d\n",
+			pid_struct = find_get_pid(entry->tgid);
+			if (pid_struct) {
+				dci_task = get_pid_task(pid_struct,
+						PIDTYPE_PID);
+				if (!dci_task) {
+					DIAG_LOG(DIAG_DEBUG_PERIPHERALS,
+						"diag: dci client with pid = %d Exited..\n",
+						entry->tgid);
+					mutex_unlock(&driver->dci_mutex);
+					return;
+				}
+				if (entry->client &&
+					entry->tgid == dci_task->tgid) {
+					DIAG_LOG(DIAG_DEBUG_DCI,
+						"entry tgid = %d, dci client tgid = %d\n",
+						entry->tgid, dci_task->tgid);
+					stat = send_sig_info(
+						entry->client_info.signal_type,
+						&info, dci_task);
+					if (stat)
+						pr_err("diag: Err sending dci signal to client, signal data: 0x%x, stat: %d\n",
 							info.si_int, stat);
-			} else
-				pr_err("diag: client data is corrupted, signal data: 0x%x, stat: %d\n",
+				} else
+					pr_err("diag: client data is corrupted, signal data: 0x%x, stat: %d\n",
 						info.si_int, stat);
+			}
 		}
 	}
 	mutex_unlock(&driver->dci_mutex);
@@ -2138,8 +2152,8 @@ struct diag_dci_client_tbl *dci_lookup_client_entry_pid(int tgid)
 		pid_struct = find_get_pid(entry->tgid);
 		if (!pid_struct) {
 			DIAG_LOG(DIAG_DEBUG_DCI,
-				"diag: valid pid doesn't exist for pid = %d\n",
-				entry->tgid);
+				"diag: Exited pid (%d) doesn't match dci client of pid (%d)\n",
+				tgid, entry->tgid);
 			continue;
 		}
 		task_s = get_pid_task(pid_struct, PIDTYPE_PID);

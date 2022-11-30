@@ -107,6 +107,7 @@ struct msm_compr_pdata {
 	bool use_legacy_api; /* indicates use older asm apis*/
 	struct msm_compr_dec_params *dec_params[MSM_FRONTEND_DAI_MAX];
 	struct msm_compr_ch_map *ch_map[MSM_FRONTEND_DAI_MAX];
+	bool is_in_use[MSM_FRONTEND_DAI_MAX];
 };
 
 struct msm_compr_audio {
@@ -170,6 +171,7 @@ struct msm_compr_audio {
 
 	wait_queue_head_t eos_wait;
 	wait_queue_head_t drain_wait;
+	wait_queue_head_t flush_wait;
 	wait_queue_head_t close_wait;
 	wait_queue_head_t wait_for_stream_avail;
 
@@ -661,6 +663,7 @@ static void compr_event_handler(uint32_t opcode,
 			pr_debug("token 0x%x, stream id %d\n", token,
 				  STREAM_ID_FROM_TOKEN(token));
 			prtd->cmd_ack = 1;
+			wake_up(&prtd->flush_wait);
 			break;
 		case ASM_DATA_CMD_REMOVE_INITIAL_SILENCE:
 			pr_debug("%s: ASM_DATA_CMD_REMOVE_INITIAL_SILENCE:",
@@ -1323,11 +1326,16 @@ static int msm_compr_playback_open(struct snd_compr_stream *cstream)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
-	struct msm_compr_audio *prtd;
+	struct msm_compr_audio *prtd = NULL;
 	struct msm_compr_pdata *pdata =
 			snd_soc_platform_get_drvdata(rtd->platform);
 
 	pr_debug("%s\n", __func__);
+	if (pdata->is_in_use[rtd->dai_link->be_id] == true) {
+		pr_err("%s: %s is already in use,err: %d ",
+			__func__, rtd->dai_link->cpu_dai_name, -EBUSY);
+		return -EBUSY;
+	}
 	prtd = kzalloc(sizeof(struct msm_compr_audio), GFP_KERNEL);
 	if (prtd == NULL) {
 		pr_err("Failed to allocate memory for msm_compr_audio\n");
@@ -1339,7 +1347,7 @@ static int msm_compr_playback_open(struct snd_compr_stream *cstream)
 	pdata->cstream[rtd->dai_link->be_id] = cstream;
 	pdata->audio_effects[rtd->dai_link->be_id] =
 		 kzalloc(sizeof(struct msm_compr_audio_effects), GFP_KERNEL);
-	if (!pdata->audio_effects[rtd->dai_link->be_id]) {
+	if (pdata->audio_effects[rtd->dai_link->be_id] == NULL) {
 		pr_err("%s: Could not allocate memory for effects\n", __func__);
 		pdata->cstream[rtd->dai_link->be_id] = NULL;
 		kfree(prtd);
@@ -1347,10 +1355,11 @@ static int msm_compr_playback_open(struct snd_compr_stream *cstream)
 	}
 	pdata->dec_params[rtd->dai_link->be_id] =
 		 kzalloc(sizeof(struct msm_compr_dec_params), GFP_KERNEL);
-	if (!pdata->dec_params[rtd->dai_link->be_id]) {
+	if (pdata->dec_params[rtd->dai_link->be_id] == NULL) {
 		pr_err("%s: Could not allocate memory for dec params\n",
 			__func__);
 		kfree(pdata->audio_effects[rtd->dai_link->be_id]);
+		pdata->audio_effects[rtd->dai_link->be_id] = NULL;
 		pdata->cstream[rtd->dai_link->be_id] = NULL;
 		kfree(prtd);
 		return -ENOMEM;
@@ -1388,6 +1397,7 @@ static int msm_compr_playback_open(struct snd_compr_stream *cstream)
 
 	init_waitqueue_head(&prtd->eos_wait);
 	init_waitqueue_head(&prtd->drain_wait);
+	init_waitqueue_head(&prtd->flush_wait);
 	init_waitqueue_head(&prtd->close_wait);
 	init_waitqueue_head(&prtd->wait_for_stream_avail);
 
@@ -1395,18 +1405,20 @@ static int msm_compr_playback_open(struct snd_compr_stream *cstream)
 	populate_codec_list(prtd);
 	prtd->audio_client = q6asm_audio_client_alloc(
 				(app_cb)compr_event_handler, prtd);
-	if (!prtd->audio_client) {
+	if (prtd->audio_client == NULL) {
 		pr_err("%s: Could not allocate memory for client\n", __func__);
 		kfree(pdata->audio_effects[rtd->dai_link->be_id]);
+		pdata->audio_effects[rtd->dai_link->be_id] = NULL;
 		kfree(pdata->dec_params[rtd->dai_link->be_id]);
 		pdata->cstream[rtd->dai_link->be_id] = NULL;
-		runtime->private_data = NULL;
 		kfree(prtd);
+		runtime->private_data = NULL;
 		return -ENOMEM;
 	}
 	pr_debug("%s: session ID %d\n", __func__, prtd->audio_client->session);
 	prtd->audio_client->perf_mode = false;
 	prtd->session_id = prtd->audio_client->session;
+	pdata->is_in_use[rtd->dai_link->be_id] = true;
 
 	return 0;
 }
@@ -1563,10 +1575,15 @@ static int msm_compr_playback_free(struct snd_compr_stream *cstream)
 
 	q6asm_audio_client_free(ac);
 
-	kfree(pdata->audio_effects[soc_prtd->dai_link->be_id]);
-	pdata->audio_effects[soc_prtd->dai_link->be_id] = NULL;
-	kfree(pdata->dec_params[soc_prtd->dai_link->be_id]);
-	pdata->dec_params[soc_prtd->dai_link->be_id] = NULL;
+	if (pdata->audio_effects[soc_prtd->dai_link->be_id] != NULL) {
+		kfree(pdata->audio_effects[soc_prtd->dai_link->be_id]);
+		pdata->audio_effects[soc_prtd->dai_link->be_id] = NULL;
+	}
+	if (pdata->dec_params[soc_prtd->dai_link->be_id] != NULL) {
+		kfree(pdata->dec_params[soc_prtd->dai_link->be_id]);
+		pdata->dec_params[soc_prtd->dai_link->be_id] = NULL;
+	}
+	pdata->is_in_use[soc_prtd->dai_link->be_id] = false;
 	kfree(prtd);
 	runtime->private_data = NULL;
 
@@ -1994,6 +2011,8 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 			spin_unlock_irqrestore(&prtd->lock, flags);
 			q6asm_stream_cmd(
 				prtd->audio_client, CMD_FLUSH, stream_id);
+			wait_event_timeout(prtd->flush_wait,
+					prtd->cmd_ack, 1 * HZ);
 			spin_lock_irqsave(&prtd->lock, flags);
 		} else {
 			prtd->first_buffer = 0;
@@ -2249,6 +2268,8 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 			pr_debug("%s:issue CMD_FLUSH ac->stream_id %d",
 					      __func__, ac->stream_id);
 			q6asm_stream_cmd(ac, CMD_FLUSH, ac->stream_id);
+			wait_event_timeout(prtd->flush_wait,
+					   prtd->cmd_ack, 1 * HZ / 4);
 
 			q6asm_run_nowait(prtd->audio_client, 0, 0, 0);
 		}
@@ -3390,6 +3411,7 @@ static int msm_compr_probe(struct snd_soc_platform *platform)
 		pdata->dec_params[i] = NULL;
 		pdata->cstream[i] = NULL;
 		pdata->ch_map[i] = NULL;
+		pdata->is_in_use[i] = false;
 	}
 
 	snd_soc_add_platform_controls(platform, msm_compr_gapless_controls,

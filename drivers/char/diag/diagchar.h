@@ -437,6 +437,7 @@ struct diag_md_proc_info {
 	struct task_struct *socket_process;
 	struct task_struct *callback_process;
 	struct task_struct *mdlog_process;
+	struct task_struct *uart_process;
 };
 
 struct diag_feature_t {
@@ -599,6 +600,8 @@ struct diagchar_dev {
 #endif
 	int time_sync_enabled;
 	uint8_t uses_time_api;
+	/* pid for diag_mdlog(CP silent log app) */
+	struct pid *silent_log_pid;
 	struct platform_device *pdev;
 };
 

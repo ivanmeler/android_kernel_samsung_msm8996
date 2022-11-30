@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -30,6 +30,7 @@
 #include <linux/security.h>
 #include <linux/compat.h>
 #include <linux/ctype.h>
+#include <linux/show_mem_notifier.h>
 
 #include "kgsl.h"
 #include "kgsl_debugfs.h"
@@ -169,7 +170,7 @@ int kgsl_memfree_find_entry(pid_t ptname, uint64_t *gpuaddr,
 static void kgsl_memfree_purge(struct kgsl_pagetable *pagetable,
 		uint64_t gpuaddr, uint64_t size)
 {
-	pid_t ptname = pagetable ? pagetable->name : 0;
+	pid_t ptname = pagetable ? pagetable->name : 0;	
 	int i;
 
 	if (memfree.list == NULL)
@@ -318,7 +319,7 @@ kgsl_mem_entry_destroy(struct kref *kref)
 			    entry->memdesc.sgt->nents, i) {
 			page = sg_page(sg);
 			for (j = 0; j < (sg->length >> PAGE_SHIFT); j++)
-				set_page_dirty(nth_page(page, j));
+				set_page_dirty_lock(nth_page(page, j));
 		}
 	}
 
@@ -355,6 +356,7 @@ static int kgsl_mem_entry_track_gpuaddr(struct kgsl_device *device,
 
 	return kgsl_mmu_get_gpuaddr(pagetable, &entry->memdesc);
 }
+
 
 /* Commit the entry to the process so it can be accessed by other operations */
 static void kgsl_mem_entry_commit_process(struct kgsl_mem_entry *entry)
@@ -419,6 +421,7 @@ static int kgsl_mem_entry_attach_process(struct kgsl_device *device,
 		entry->memdesc.size);
 
 	return ret;
+
 }
 
 /* Detach a memory entry from a process and unmap it from the MMU */
@@ -442,8 +445,8 @@ static void kgsl_mem_entry_detach_process(struct kgsl_mem_entry *entry)
 	entry->priv->stats[type].cur -= entry->memdesc.size;
 	spin_unlock(&entry->priv->mem_lock);
 
-	kgsl_mmu_put_gpuaddr(&entry->memdesc);
-
+	kgsl_mmu_put_gpuaddr(&entry->memdesc);		
+	
 	kgsl_process_private_put(entry->priv);
 
 	entry->priv = NULL;
@@ -511,6 +514,16 @@ int kgsl_context_init(struct kgsl_device_private *dev_priv,
 	struct kgsl_device *device = dev_priv->device;
 	char name[64];
 	int ret = 0, id;
+	struct kgsl_process_private  *proc_priv = dev_priv->process_priv;
+
+	if (atomic_read(&proc_priv->ctxt_count) > KGSL_MAX_CONTEXTS_PER_PROC) {
+		KGSL_DRV_ERR(device,
+			"Per process context limit reached for pid %u",
+			dev_priv->process_priv->pid);
+		return -ENOSPC;
+	}
+
+	atomic_inc(&proc_priv->ctxt_count);
 
 	id = _kgsl_get_context_id(device);
 	if (id == -ENOSPC) {
@@ -529,7 +542,7 @@ int kgsl_context_init(struct kgsl_device_private *dev_priv,
 			KGSL_DRV_INFO(device,
 				"cannot have more than %zu contexts due to memstore limitation\n",
 				KGSL_MEMSTORE_MAX);
-
+		atomic_dec(&proc_priv->ctxt_count);
 		return id;
 	}
 
@@ -557,9 +570,9 @@ int kgsl_context_init(struct kgsl_device_private *dev_priv,
 	snprintf(name, sizeof(name), "context-%d", id);
 	kgsl_add_event_group(&context->events, context, name,
 		kgsl_readtimestamp, context);
-
 out:
 	if (ret) {
+		atomic_dec(&proc_priv->ctxt_count);
 		write_lock(&device->context_lock);
 		idr_remove(&dev_priv->device->context_idr, id);
 		write_unlock(&device->context_lock);
@@ -592,13 +605,17 @@ static void kgsl_context_detach(struct kgsl_context *context)
 	 * the context before it gets fully removed, and to make sure
 	 * we don't try to detach twice.
 	 */
-	if (test_and_set_bit(KGSL_CONTEXT_PRIV_DETACHED, &context->priv))
+	if (test_and_set_bit(KGSL_CONTEXT_PRIV_DETACHED, &context->priv)) {
+		pr_err("KGSL: Trying to detach context %d multiple times\n", context->id);
 		return;
+	}
 
 	device = context->device;
 
 	trace_kgsl_context_detach(device, context);
 
+	context->timers[1] = local_clock();
+	pr_err("KGSL: Detaching context %d, clock:%llu\n", context->id, context->timers[1]);
 	context->device->ftbl->drawctxt_detach(context);
 
 	/*
@@ -620,6 +637,7 @@ kgsl_context_destroy(struct kref *kref)
 	struct kgsl_context *context = container_of(kref, struct kgsl_context,
 						    refcount);
 	struct kgsl_device *device = context->device;
+	unsigned int id = context->id;
 
 	trace_kgsl_context_destroy(device, context);
 
@@ -643,6 +661,7 @@ kgsl_context_destroy(struct kref *kref)
 			device->pwrctrl.constraint.type = KGSL_CONSTRAINT_NONE;
 		}
 
+		atomic_dec(&context->proc_priv->ctxt_count);
 		idr_remove(&device->context_idr, context->id);
 		context->id = KGSL_CONTEXT_INVALID;
 	}
@@ -650,7 +669,13 @@ kgsl_context_destroy(struct kref *kref)
 	kgsl_sync_timeline_destroy(context);
 	kgsl_process_private_put(context->proc_priv);
 
+	context->timers[2] = local_clock();
+	pr_err("KGSL: Destroying context %d alive:%llu detached:%llu\n", id,
+			context->timers[1] - context->timers[0],
+			context->timers[2] - context->timers[1]);
+
 	device->ftbl->drawctxt_destroy(context);
+	pr_err("KGSL: Destroyed  context %d\n", id);
 }
 
 struct kgsl_device *kgsl_get_device(int dev_idx)
@@ -1661,6 +1686,9 @@ long kgsl_ioctl_drawctxt_create(struct kgsl_device_private *dev_priv,
 		result = PTR_ERR(context);
 		goto done;
 	}
+	context->timers[0] = local_clock();
+	pr_err("KGSL: Creating   context %d, clock:%llu tid:%d\n",
+			context->id, context->timers[0], context->tid);
 	trace_kgsl_context_create(dev_priv->device, context, param->flags);
 
 	/* Commit the pointer to the context in context_idr */
@@ -2022,20 +2050,18 @@ static int kgsl_setup_anon_useraddr(struct kgsl_pagetable *pagetable,
 	entry->memdesc.size = (uint64_t) size;
 	entry->memdesc.useraddr = hostptr;
 	entry->memdesc.flags |= KGSL_MEMFLAGS_USERMEM_ADDR;
-
 	if (kgsl_memdesc_use_cpu_map(&entry->memdesc)) {
 		int ret;
 
 		/* Register the address in the database */
 		ret = kgsl_mmu_set_svm_region(pagetable,
 			(uint64_t) entry->memdesc.useraddr, (uint64_t) size);
-
+	
 		if (ret)
 			return ret;
 
 		entry->memdesc.gpuaddr = (uint64_t)  entry->memdesc.useraddr;
 	}
-
 	return memdesc_sg_virt(&entry->memdesc, NULL);
 }
 
@@ -2301,11 +2327,11 @@ long kgsl_ioctl_gpuobj_import(struct kgsl_device_private *dev_priv,
 		entry->memdesc.size);
 
 	trace_kgsl_mem_map(entry, fd);
-
 	kgsl_mem_entry_commit_process(entry);
-
+	
 	/* put the extra refcount for kgsl_mem_entry_create() */
 	kgsl_mem_entry_put(entry);
+
 	return 0;
 
 unmap:
@@ -2612,7 +2638,7 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 	trace_kgsl_mem_map(entry, param->fd);
 
 	kgsl_mem_entry_commit_process(entry);
-
+	
 	/* put the extra refcount for kgsl_mem_entry_create() */
 	kgsl_mem_entry_put(entry);
 	return result;
@@ -2839,7 +2865,7 @@ long kgsl_ioctl_gpuobj_sync(struct kgsl_device_private *dev_priv,
 	long ret = 0;
 	bool full_flush = false;
 	uint64_t size = 0;
-	int i, count = 0;
+	int i;
 	void __user *ptr;
 
 	if (param->count == 0 || param->count > 128)
@@ -2851,8 +2877,8 @@ long kgsl_ioctl_gpuobj_sync(struct kgsl_device_private *dev_priv,
 
 	entries = kzalloc(param->count * sizeof(*entries), GFP_KERNEL);
 	if (entries == NULL) {
-		ret = -ENOMEM;
-		goto out;
+		kfree(objs);
+		return -ENOMEM;
 	}
 
 	ptr = to_user_ptr(param->objs);
@@ -2869,36 +2895,32 @@ long kgsl_ioctl_gpuobj_sync(struct kgsl_device_private *dev_priv,
 		if (entries[i] == NULL)
 			continue;
 
-		count++;
-
 		if (!(objs[i].op & KGSL_GPUMEM_CACHE_RANGE))
 			size += entries[i]->memdesc.size;
 		else if (objs[i].offset < entries[i]->memdesc.size)
 			size += (entries[i]->memdesc.size - objs[i].offset);
 
 		full_flush = check_full_flush(size, objs[i].op);
-		if (full_flush)
-			break;
+		if (full_flush) {
+			trace_kgsl_mem_sync_full_cache(i, size);
+			flush_cache_all();
+			goto out;
+		}
 
 		ptr += sizeof(*objs);
 	}
 
-	if (full_flush) {
-		trace_kgsl_mem_sync_full_cache(count, size);
-		flush_cache_all();
-	} else {
-		for (i = 0; !ret && i < param->count; i++)
-			if (entries[i])
-				ret = _kgsl_gpumem_sync_cache(entries[i],
-						objs[i].offset, objs[i].length,
-						objs[i].op);
-	}
+	for (i = 0; !ret && i < param->count; i++)
+		if (entries[i])
+			ret = _kgsl_gpumem_sync_cache(entries[i],
+					objs[i].offset, objs[i].length,
+					objs[i].op);
 
+out:
 	for (i = 0; i < param->count; i++)
 		if (entries[i])
 			kgsl_mem_entry_put(entries[i]);
 
-out:
 	kfree(entries);
 	kfree(objs);
 
@@ -3052,9 +3074,10 @@ long kgsl_ioctl_gpuobj_alloc(struct kgsl_device_private *dev_priv,
 	param->flags = entry->memdesc.flags;
 	param->mmapsize = kgsl_memdesc_footprint(&entry->memdesc);
 	param->id = entry->id;
-
+	
 	/* put the extra refcount for kgsl_mem_entry_create() */
 	kgsl_mem_entry_put(entry);
+
 	return 0;
 }
 
@@ -3077,9 +3100,10 @@ long kgsl_ioctl_gpumem_alloc(struct kgsl_device_private *dev_priv,
 	param->gpuaddr = (unsigned long) entry->memdesc.gpuaddr;
 	param->size = (size_t) entry->memdesc.size;
 	param->flags = (unsigned int) entry->memdesc.flags;
-
+	
 	/* put the extra refcount for kgsl_mem_entry_create() */
 	kgsl_mem_entry_put(entry);
+
 	return 0;
 }
 
@@ -3102,9 +3126,10 @@ long kgsl_ioctl_gpumem_alloc_id(struct kgsl_device_private *dev_priv,
 	param->size = (size_t) entry->memdesc.size;
 	param->mmapsize = (size_t) kgsl_memdesc_footprint(&entry->memdesc);
 	param->gpuaddr = (unsigned long) entry->memdesc.gpuaddr;
-
+	
 	/* put the extra refcount for kgsl_mem_entry_create() */
 	kgsl_mem_entry_put(entry);
+
 	return 0;
 }
 
@@ -3427,8 +3452,7 @@ static unsigned long _gpu_set_svm_region(struct kgsl_process_private *private,
 	}
 
 	kgsl_memfree_purge(private->pagetable, entry->memdesc.gpuaddr,
-		entry->memdesc.size);
-
+		entry->memdesc.size);	
 	return addr;
 }
 
@@ -4019,6 +4043,27 @@ void kgsl_device_platform_remove(struct kgsl_device *device)
 }
 EXPORT_SYMBOL(kgsl_device_platform_remove);
 
+static int kgsl_sharedmem_size_notifier(struct notifier_block *nb,
+					unsigned long is_simple, void *data)
+{
+	struct seq_file *s;
+
+	s = (struct seq_file *)data;
+	if (!is_simple)
+		return 0;
+	if (s != NULL)
+		seq_printf(s, "KgslSharedmem:  %8lu kB\n",
+			atomic_long_read(&kgsl_driver.stats.page_alloc) >> 10);
+	else
+		printk("KgslSharedmem:%lukB ",
+			atomic_long_read(&kgsl_driver.stats.page_alloc) >> 10);
+	return 0;
+}
+
+static struct notifier_block kgsl_sharedmem_size_nb = {
+	.notifier_call = kgsl_sharedmem_size_notifier,
+};
+
 static void kgsl_core_exit(void)
 {
 	kgsl_events_exit();
@@ -4045,6 +4090,7 @@ static void kgsl_core_exit(void)
 
 	kgsl_memfree_exit();
 	unregister_chrdev_region(kgsl_driver.major, KGSL_DEVICE_MAX);
+	show_mem_notifier_unregister(&kgsl_sharedmem_size_nb);
 }
 
 static int __init kgsl_core_init(void)
@@ -4136,6 +4182,8 @@ static int __init kgsl_core_init(void)
 		goto err;
 
 	kgsl_memfree_init();
+
+	show_mem_notifier_register(&kgsl_sharedmem_size_nb);
 
 	return 0;
 

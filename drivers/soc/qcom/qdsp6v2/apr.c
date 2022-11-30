@@ -459,19 +459,19 @@ struct apr_svc *apr_register(char *dest, char *svc_name, apr_fn svc_fn,
 			mutex_unlock(&svc->m_lock);
 			return NULL;
 		}
-		if (!svc->port_cnt && !svc->svc_cnt)
+		if (!svc->svc_cnt)
 			clnt->svc_cnt++;
 		svc->port_cnt++;
 		svc->port_fn[temp_port] = svc_fn;
 		svc->port_priv[temp_port] = priv;
+		svc->svc_cnt++;
 	} else {
 		if (!svc->fn) {
-			if (!svc->port_cnt && !svc->svc_cnt)
+			if (!svc->svc_cnt)
 				clnt->svc_cnt++;
 			svc->fn = svc_fn;
-			if (svc->port_cnt)
-				svc->svc_cnt++;
 			svc->priv = priv;
+			svc->svc_cnt++;
 		}
 	}
 
@@ -531,6 +531,12 @@ void apr_cb_func(void *buf, int len, void *priv)
 		pr_err("APR: Wrong paket size\n");
 		return;
 	}
+
+	if (hdr->pkt_size < hdr_size) {
+		pr_err("APR: Packet size less than header size\n");
+		return;
+	}
+
 	msg_type = hdr->hdr_field;
 	msg_type = (msg_type >> 0x08) & 0x0003;
 	if (msg_type >= APR_MSG_TYPE_MAX && msg_type != APR_BASIC_RSP_RESULT) {
@@ -608,7 +614,8 @@ void apr_cb_func(void *buf, int len, void *priv)
 
 	temp_port = ((data.dest_port >> 8) * 8) + (data.dest_port & 0xFF);
 	pr_debug("port = %d t_port = %d\n", data.src_port, temp_port);
-	if (c_svc->port_cnt && c_svc->port_fn[temp_port])
+	if (((temp_port >= 0) && (temp_port < APR_MAX_PORTS))
+		&& (c_svc->port_cnt && c_svc->port_fn[temp_port]))
 		c_svc->port_fn[temp_port](&data,  c_svc->port_priv[temp_port]);
 	else if (c_svc->fn)
 		c_svc->fn(&data, c_svc->priv);
@@ -678,24 +685,17 @@ int apr_deregister(void *handle)
 	client_id = svc->client_id;
 	clnt = &client[dest_id][client_id];
 
-	if (svc->port_cnt > 0 || svc->svc_cnt > 0) {
+	if (svc->svc_cnt > 0) {
 		if (svc->port_cnt)
 			svc->port_cnt--;
-		else if (svc->svc_cnt)
-			svc->svc_cnt--;
-		if (!svc->port_cnt && !svc->svc_cnt) {
+		svc->svc_cnt--;
+		if (!svc->svc_cnt) {
 			client[dest_id][client_id].svc_cnt--;
-			svc->need_reset = 0x0;
-		}
-	} else if (client[dest_id][client_id].svc_cnt > 0) {
-		client[dest_id][client_id].svc_cnt--;
-		if (!client[dest_id][client_id].svc_cnt) {
-			svc->need_reset = 0x0;
 			pr_debug("%s: service is reset %pK\n", __func__, svc);
 		}
 	}
 
-	if (!svc->port_cnt && !svc->svc_cnt) {
+	if (!svc->svc_cnt) {
 		svc->priv = NULL;
 		svc->id = 0;
 		svc->fn = NULL;

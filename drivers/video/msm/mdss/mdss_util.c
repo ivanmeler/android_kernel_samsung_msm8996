@@ -234,3 +234,4 @@ bool mdss_get_irq_enable_state(struct mdss_hw *hw)
 
 	return is_irq_enabled;
 }
+

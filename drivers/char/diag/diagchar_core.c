@@ -24,6 +24,7 @@
 #include <linux/timer.h>
 #include <linux/platform_device.h>
 #include <linux/msm_mhi.h>
+#include <linux/msm-bus.h>
 #ifdef CONFIG_DIAG_OVER_USB
 #include <linux/usb/usbdiag.h>
 #endif
@@ -373,8 +374,8 @@ static int diagchar_open(struct inode *inode, struct file *file)
 	return -ENOMEM;
 
 fail:
-	mutex_unlock(&driver->diagchar_mutex);
 	driver->num_clients--;
+	mutex_unlock(&driver->diagchar_mutex);
 	pr_err_ratelimited("diag: Insufficient memory for new client");
 	return -ENOMEM;
 }
@@ -439,8 +440,10 @@ static void diag_close_logging_process(const int pid)
 	driver->mask_clear = 1;
 	mutex_unlock(&driver->diag_maskclear_mutex);
 
+	mutex_lock(&driver->diagchar_mutex);
 	session_peripheral_mask = session_info->peripheral_mask;
 	diag_md_session_close(session_info);
+	mutex_unlock(&driver->diagchar_mutex);
 	for (i = 0; i < NUM_MD_SESSIONS; i++)
 		if (MD_PERIPHERAL_MASK(i) & session_peripheral_mask)
 			diag_mux_close_peripheral(DIAG_LOCAL_PROC, i);
@@ -477,11 +480,15 @@ static int diag_remove_client_entry(struct file *file)
 
 	diagpriv_data = file->private_data;
 
-	/*
-	 * clean up any DCI registrations, if this is a DCI client
-	 * This will specially help in case of ungraceful exit of any DCI client
-	 * This call will remove any pending registrations of such client
-	 */
+	if(driver->silent_log_pid) {
+		put_pid(driver->silent_log_pid);
+		driver->silent_log_pid = NULL;
+	}
+
+	/* clean up any DCI registrations, if this is a DCI client
+	* This will specially help in case of ungraceful exit of any DCI client
+	* This call will remove any pending registrations of such client
+	*/
 	mutex_lock(&driver->dci_mutex);
 	dci_entry = dci_lookup_client_entry_pid(current->tgid);
 	if (dci_entry)
@@ -515,8 +522,8 @@ static int diag_remove_client_entry(struct file *file)
 static int diagchar_close(struct inode *inode, struct file *file)
 {
 	int ret;
-	DIAG_LOG(DIAG_DEBUG_USERSPACE, "diag: process exit %s\n",
-		current->comm);
+	DIAG_LOG(DIAG_DEBUG_USERSPACE, "diag: %s process exit with pid = %d\n",
+		current->comm, current->tgid);		
 	ret = diag_remove_client_entry(file);
 	mutex_lock(&driver->diag_maskclear_mutex);
 	driver->mask_clear = 0;
@@ -643,8 +650,10 @@ static void diag_cmd_invalidate_polling(int change_flag)
 	struct diag_cmd_reg_t *item = NULL;
 
 	if (change_flag == DIAG_CMD_ADD) {
-		if (driver->polling_reg_flag)
+		if (driver->polling_reg_flag){
+			DIAG_LOG(DIAG_DEBUG_PERIPHERALS," exiting function %s",__func__);
 			return;
+		}
 	}
 
 	driver->polling_reg_flag = 0;
@@ -1621,7 +1630,21 @@ static int diag_switch_logging(struct diag_logging_mode_param_t *param)
 	DIAG_LOG(DIAG_DEBUG_USERSPACE,
 		"request to switch logging from %d mask:%0x to %d mask:%0x\n",
 		curr_mode, driver->md_session_mask, new_mode, peripheral_mask);
-
+	if (param->req_mode == MEMORY_DEVICE_MODE && 
+	        param->peripheral_mask != MD_PERIPHERAL_MASK(PERIPHERAL_SENSORS) &&
+	        (driver->md_session_mask & ~MD_PERIPHERAL_MASK(PERIPHERAL_SENSORS)) == 0)
+	{
+	        WARN(1, "diag_switch_logging: BIMC voting %d\n", 300000000);
+	        msm_bus_floor_vote_context("bimc", 300000000, 1);
+	}
+	else {
+	        if (param->req_mode != MEMORY_DEVICE_MODE &&
+	            (driver->md_session_mask & ~MD_PERIPHERAL_MASK(PERIPHERAL_SENSORS)) == 0)
+	        {
+	            WARN(1, "diag_switch_logging: BIMC voting %d\n", 0);
+	            msm_bus_floor_vote_context("bimc", 0, 1);
+	        }
+	}
 	err = diag_md_session_check(curr_mode, new_mode, param, &do_switch);
 	if (err) {
 		DIAG_LOG(DIAG_DEBUG_USERSPACE,
@@ -2150,6 +2173,10 @@ long diagchar_compat_ioctl(struct file *filp,
 		if (copy_from_user((void *)&mode_param, (void __user *)ioarg,
 				   sizeof(mode_param)))
 			return -EFAULT;
+		/*
+		 * Get a pid of diag_mdlog(app) and save it.
+		 */
+		driver->silent_log_pid = get_pid(task_pid(current));
 		mutex_lock(&driver->diagchar_mutex);
 		result = diag_switch_logging(&mode_param);
 		mutex_unlock(&driver->diagchar_mutex);
@@ -2275,6 +2302,10 @@ long diagchar_ioctl(struct file *filp,
 		if (copy_from_user((void *)&mode_param, (void __user *)ioarg,
 				   sizeof(mode_param)))
 			return -EFAULT;
+		/*
+		 * Get a pid of diag_mdlog(app) and save it.
+		 */
+		driver->silent_log_pid = get_pid(task_pid(current));
 		mutex_lock(&driver->diagchar_mutex);
 		result = diag_switch_logging(&mode_param);
 		mutex_unlock(&driver->diagchar_mutex);
@@ -2838,6 +2869,26 @@ static int check_data_ready(int index)
 	return data_type;
 }
 
+/*
+ * silent_log_panic_handler()
+ * If the silent log is enabled for CP and CP is in
+ * trouble, diag_mdlog (APP) should be terminated before
+ * a panic occurs, since it can flush logs to SD card
+ * when it is over. So, please use this function to termimate it.
+ */
+int silent_log_panic_handler(void)
+{
+	int ret = 0;
+	if(driver->silent_log_pid) {
+		pr_info("%s: killing slient log...\n", __func__);
+		kill_pid(driver->silent_log_pid, SIGTERM, 1);
+		driver->silent_log_pid = NULL;
+		ret = 1;
+	}
+	return ret;
+}
+EXPORT_SYMBOL(silent_log_panic_handler);
+
 static ssize_t diagchar_read(struct file *file, char __user *buf, size_t count,
 			  loff_t *ppos)
 {
@@ -2849,6 +2900,8 @@ static ssize_t diagchar_read(struct file *file, char __user *buf, size_t count,
 	int exit_stat = 0;
 	int write_len = 0;
 	struct diag_md_session_t *session_info = NULL;
+	struct pid *pid_struct = NULL;
+	struct task_struct *task_s = NULL;
 
 	mutex_lock(&driver->diagchar_mutex);
 	for (i = 0; i < driver->num_clients; i++)
@@ -3009,8 +3062,19 @@ exit:
 		list_for_each_safe(start, temp, &driver->dci_client_list) {
 			entry = list_entry(start, struct diag_dci_client_tbl,
 									track);
-			if (entry->client->tgid != current->tgid)
+			pid_struct = find_get_pid(entry->tgid);
+			if (!pid_struct)
 				continue;
+			task_s = get_pid_task(pid_struct, PIDTYPE_PID);
+			if (!task_s) {
+				DIAG_LOG(DIAG_DEBUG_DCI,
+				"diag: valid task doesn't exist for pid = %d\n",
+				entry->tgid);
+				continue;
+			}
+			if (task_s == entry->client)
+				if (entry->client->tgid != current->tgid)
+					continue;
 			if (!entry->in_service)
 				continue;
 			if (copy_to_user(buf + ret, &data_type, sizeof(int))) {

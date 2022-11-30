@@ -1999,6 +1999,10 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 				mmc_card_sdio(host->mmc->card))
 			sdhci_cfg_irq(host, true, false);
 		spin_unlock_irqrestore(&host->lock, flags);
+#if defined(CONFIG_SEC_HYBRID_TRAY)
+		sdhci_set_power(host, ios->power_mode, ios->vdd);
+		host->ops->set_clock(host, ios->clock);
+#endif
 		return;
 	}
 	spin_unlock_irqrestore(&host->lock, flags);
@@ -2456,7 +2460,13 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 
 	if (host->ops->platform_execute_tuning) {
 		spin_unlock_irqrestore(&host->lock, flags);
+		/*
+		 * Make sure re-tuning won't get triggered for the CRC errors
+		 * occurred while executing tuning
+		 */
+		mmc_retune_disable(mmc);
 		err = host->ops->platform_execute_tuning(host, opcode);
+		mmc_retune_enable(mmc);
 		sdhci_runtime_pm_put(host);
 		return err;
 	}

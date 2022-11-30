@@ -647,8 +647,9 @@ static int msm_pcm_playback_copy(struct snd_pcm_substream *substream, int a,
 	struct msm_audio *prtd = runtime->private_data;
 
 	fbytes = frames_to_bytes(runtime, frames);
-	pr_debug("%s: prtd->out_count = %d\n",
-				__func__, atomic_read(&prtd->out_count));
+	pr_debug("%s: Session ID = %d prtd->out_count = %d\n",
+				__func__, prtd->audio_client->session, 
+				atomic_read(&prtd->out_count));
 
 	while ((fbytes > 0) && (retries < MAX_PB_COPY_RETRIES)) {
 		if (prtd->reset_event) {

@@ -173,6 +173,14 @@ struct wcd9xxx_regulator {
 	struct regulator *regulator;
 };
 
+#define MAX_IMPEDANCE_TALBE 7
+
+struct wcd9xxx_gain_table {
+	uint32_t min;      /* Min impedance */
+	uint32_t max;      /* Max impedance */
+	int gain;   /* additional gain */
+};
+
 struct wcd9xxx_pdata {
 	int irq;
 	int irq_base;
@@ -192,6 +200,7 @@ struct wcd9xxx_pdata {
 	u32 mic_unmute_delay;
 	enum codec_variant cdc_variant;
 	u16 use_pinctrl;
+	struct wcd9xxx_gain_table imp_table[MAX_IMPEDANCE_TALBE];
 };
 
 #endif

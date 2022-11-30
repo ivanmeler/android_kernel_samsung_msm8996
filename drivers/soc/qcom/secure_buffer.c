@@ -22,6 +22,8 @@
 #include <linux/dma-mapping.h>
 #include <soc/qcom/scm.h>
 #include <soc/qcom/secure_buffer.h>
+#include <linux/platform_device.h>
+#include <linux/device.h>
 
 DEFINE_MUTEX(secure_buffer_mutex);
 
@@ -259,8 +261,8 @@ int hyp_assign_table(struct sg_table *table,
 			sizeof(dest_info_list) + sizeof(info_list) + PADDING;
 
 	if (!qcom_secure_mem) {
-		pr_err("%s is not functional as qcom_secure_mem is not allocated.\n",
-				__func__);
+		pr_err("%s is not functional as qcom_secure_mem is not allocated %d.\n",
+				__func__, table->sgl->length);
 		return -ENOMEM;
 	}
 
@@ -354,6 +356,8 @@ const char *msm_secure_vmid_to_string(int secure_vmid)
 	switch (secure_vmid) {
 	case VMID_HLOS:
 		return "VMID_HLOS";
+	case VMID_ADSP:
+		return "VMID_ADSP";
 	case VMID_CP_TOUCH:
 		return "VMID_CP_TOUCH";
 	case VMID_CP_BITSTREAM:
@@ -399,22 +403,31 @@ bool msm_secure_v2_is_supported(void)
 	return version >= MAKE_CP_VERSION(1, 1, 0);
 }
 
+static struct device dummy_device;
+
 static int __init alloc_secure_shared_memory(void)
 {
 	int ret = 0;
-	dma_addr_t dma_handle;
+	dma_addr_t dma_addr = 0;
 
-	qcom_secure_mem = kzalloc(QCOM_SECURE_MEM_SIZE, GFP_KERNEL);
+	device_initialize(&dummy_device);
+
+	qcom_secure_mem = kmalloc(QCOM_SECURE_MEM_SIZE, GFP_KERNEL | __GFP_ZERO);
 	if (!qcom_secure_mem) {
 		/* Fallback to CMA-DMA memory */
-		qcom_secure_mem = dma_alloc_coherent(NULL, QCOM_SECURE_MEM_SIZE,
-						&dma_handle, GFP_KERNEL);
+		qcom_secure_mem = dma_alloc_coherent(&dummy_device, QCOM_SECURE_MEM_SIZE,
+						&dma_addr, GFP_KERNEL);
 		if (!qcom_secure_mem) {
 			pr_err("Couldn't allocate memory for secure use-cases. hyp_assign_table will not work\n");
 			return -ENOMEM;
 		}
+
+		qcom_secure_mem = __va(dma_addr);
+		pr_err("[%s] qcom_secure_mem : %p, dma_addr : %llx\n", __func__, qcom_secure_mem, (unsigned long long)dma_addr); 
 	}
 
 	return ret;
 }
 pure_initcall(alloc_secure_shared_memory);
+ 
+ 

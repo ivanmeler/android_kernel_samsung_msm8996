@@ -890,7 +890,7 @@ int send_adm_apr(void *buf, u32 opcode)
 			result = -EINVAL;
 			goto err;
 		}
-
+				
 		if (bytes_returned > user_buf_size) {
 			pr_err("%s: User buf not big enough, size = 0x%x, returned size = 0x%x\n",
 				__func__, user_buf_size, bytes_returned);
@@ -1120,7 +1120,7 @@ int send_rtac_asm_apr(void *buf, u32 opcode)
 			result = -EINVAL;
 			goto err;
 		}
-
+				
 		if (bytes_returned > user_buf_size) {
 			pr_err("%s: User buf not big enough, size = 0x%x, returned size = 0x%x\n",
 				__func__, user_buf_size, bytes_returned);
@@ -1387,7 +1387,7 @@ static int send_rtac_afe_apr(void *buf, uint32_t opcode)
 			result = -EINVAL;
 			goto err;
 		}
-
+					
 		if (bytes_returned > user_afe_buf.buf_size) {
 			pr_err("%s: user size = 0x%x, returned size = 0x%x\n",
 				__func__, user_afe_buf.buf_size,
@@ -1617,7 +1617,7 @@ int send_voice_apr(u32 mode, void *buf, u32 opcode)
 			result = -EINVAL;
 			goto err;
 		}
-
+				
 		if (bytes_returned > user_buf_size) {
 			pr_err("%s: User buf not big enough, size = 0x%x, returned size = 0x%x\n",
 				__func__, user_buf_size, bytes_returned);

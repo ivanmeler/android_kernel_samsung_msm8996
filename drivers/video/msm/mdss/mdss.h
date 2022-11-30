@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -157,6 +157,7 @@ enum mdss_hw_quirk {
 	MDSS_QUIRK_DOWNSCALE_HANG,
 	MDSS_QUIRK_DSC_RIGHT_ONLY_PU,
 	MDSS_QUIRK_DSC_2SLICE_PU_THRPUT,
+	MDSS_QUIRK_AUTOREFRESH,
 	MDSS_QUIRK_DMA_BI_DIR,
 	MDSS_QUIRK_FMT_PACK_PATTERN,
 	MDSS_QUIRK_NEED_SECURE_MAP,
@@ -232,6 +233,13 @@ struct mdss_scaler_block {
 	u32 *dest_scaler_off;
 	u32 *dest_scaler_lut_off;
 	struct mdss_mdp_qseed3_lut_tbl lut_tbl;
+
+	/*
+	 * Lock is mainly to serialize access to LUT.
+	 * LUT values come asynchronously from userspace
+	 * via ioctl.
+	 */
+	struct mutex scaler_lock;	
 };
 
 struct mdss_data_type;
@@ -285,6 +293,10 @@ struct mdss_data_type {
 	struct dss_io_data mdss_io;
 	struct dss_io_data vbif_io;
 	struct dss_io_data vbif_nrt_io;
+	struct dss_io_data mdp_smmu_io;
+	struct dss_io_data noc_io;
+	struct dss_io_data mmss_cc_io;
+
 	char __iomem *mdp_base;
 
 	struct mdss_smmu_client mdss_smmu[MDSS_IOMMU_MAX_DOMAIN];
@@ -595,5 +607,10 @@ static inline bool mdss_has_quirk(struct mdss_data_type *mdata,
 		dss_reg_w(&mdata->mdss_io, offset, value, 0)
 #define MDSS_REG_READ(mdata, offset) \
 		dss_reg_r(&mdata->mdss_io, offset, 0)
+
+#if defined(CONFIG_FB_MSM_MDSS_SAMSUNG)
+	extern void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag,
+		char *addr, int len, u32 **dump_mem, bool from_isr);
+#endif
 
 #endif /* MDSS_H */

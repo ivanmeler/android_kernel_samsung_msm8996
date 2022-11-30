@@ -37,6 +37,7 @@
 #define KGSL_PRIORITY_MAX_RB_LEVELS 4
 #define KGSL_MEMSTORE_MAX	(KGSL_MEMSTORE_SIZE / \
 	sizeof(struct kgsl_devmemstore) - 1 - KGSL_PRIORITY_MAX_RB_LEVELS)
+#define KGSL_MAX_CONTEXTS_PER_PROC 200
 
 #define MEMSTORE_RB_OFFSET(rb, field)	\
 	KGSL_MEMSTORE_OFFSET(((rb)->id + KGSL_MEMSTORE_MAX), field)
@@ -466,6 +467,7 @@ static inline int timestamp_cmp(unsigned int a, unsigned int b)
  */
 static inline void kgsl_schedule_work(struct work_struct *work)
 {
+	trace_printk("work:%p, %pF\n", work, __builtin_return_address(0));
 	queue_work(kgsl_driver.workqueue, work);
 }
 

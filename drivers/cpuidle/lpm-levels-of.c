@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -80,14 +80,6 @@ static void set_optimum_cpu_residency(struct lpm_cpu *cpu, int cpu_id,
 	for (i = 0; i < cpu->nlevels; i++) {
 		struct power_params *pwr = &cpu->levels[i].pwr;
 
-		mode_avail = probe_time ||
-			lpm_cpu_mode_allow(cpu_id, i, true);
-
-		if (!mode_avail) {
-			residency[i] = 0;
-			continue;
-		}
-
 		residency[i] = ~0;
 		for (j = i + 1; j < cpu->nlevels; j++) {
 			mode_avail = probe_time ||
@@ -110,19 +102,11 @@ static void set_optimum_cluster_residency(struct lpm_cluster *cluster,
 	for (i = 0; i < cluster->nlevels; i++) {
 		struct power_params *pwr = &cluster->levels[i].pwr;
 
-		mode_avail = probe_time ||
-			lpm_cluster_mode_allow(cluster, i,
-					true);
-
-		if (!mode_avail) {
-			pwr->max_residency = 0;
-			continue;
-		}
-
 		pwr->max_residency = ~0;
-		for (j = i+1; j < cluster->nlevels; j++) {
-			mode_avail = probe_time ||
-					lpm_cluster_mode_allow(cluster, j,
+		for (j = 0; j < cluster->nlevels; j++) {
+			if (i >= j)
+				mode_avail = probe_time ||
+					lpm_cluster_mode_allow(cluster, i,
 							true);
 			if (mode_avail &&
 				(pwr->max_residency > pwr->residencies[j]) &&
@@ -820,14 +804,12 @@ failed:
 
 void free_cluster_node(struct lpm_cluster *cluster)
 {
-	struct list_head *list;
 	int i;
+	struct lpm_cluster *cl, *m;
 
-	list_for_each(list, &cluster->child) {
-		struct lpm_cluster *n;
-		n = list_entry(list, typeof(*n), list);
-		list_del(list);
-		free_cluster_node(n);
+	list_for_each_entry_safe(cl, m, &cluster->child, list) {
+		list_del(&cl->list);
+		free_cluster_node(cl);
 	};
 
 	if (cluster->cpu) {

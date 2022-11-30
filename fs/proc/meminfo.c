@@ -12,8 +12,12 @@
 #include <linux/vmstat.h>
 #include <linux/atomic.h>
 #include <linux/vmalloc.h>
+#ifdef CONFIG_CMA
+#include <linux/cma.h>
+#endif
 #include <asm/page.h>
 #include <asm/pgtable.h>
+#include <linux/show_mem_notifier.h>
 #include "internal.h"
 
 void __attribute__((weak)) arch_report_meminfo(struct seq_file *m)
@@ -109,6 +113,12 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #ifndef CONFIG_MMU
 		"MmapCopy:       %8lu kB\n"
 #endif
+#ifdef CONFIG_RBIN
+		"RbinTotal:      %8lu kB\n"
+		"RbinAlloced:    %8u kB\n"
+		"RbinPool:       %8u kB\n"
+		"RbinFree:       %8lu kB\n"
+#endif
 		"SwapTotal:      %8lu kB\n"
 		"SwapFree:       %8lu kB\n"
 		"Dirty:          %8lu kB\n"
@@ -161,6 +171,13 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #endif
 #ifndef CONFIG_MMU
 		K((unsigned long) atomic_long_read(&mmap_pages_allocated)),
+#endif
+#ifdef CONFIG_RBIN
+		K(totalrbin_pages),
+		K(atomic_read(&rbin_allocated_pages)
+		   + atomic_read(&rbin_pool_pages)),
+		K(atomic_read(&rbin_pool_pages)),
+		K(global_page_state(NR_FREE_RBIN_PAGES)),
 #endif
 		K(i.totalswap),
 		K(i.freeswap),
@@ -215,9 +232,28 @@ static const struct file_operations meminfo_proc_fops = {
 	.release	= single_release,
 };
 
+static int meminfo_extra_proc_show(struct seq_file *m, void *v)
+{
+	show_mem_call_notifiers_simple(m);
+	return 0;
+}
+
+static int meminfo_extra_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, meminfo_extra_proc_show, NULL);
+}
+
+static const struct file_operations meminfo_extra_proc_fops = {
+	.open		= meminfo_extra_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int __init proc_meminfo_init(void)
 {
 	proc_create("meminfo", 0, NULL, &meminfo_proc_fops);
+	proc_create("meminfo_extra", 0, NULL, &meminfo_extra_proc_fops);
 	return 0;
 }
 fs_initcall(proc_meminfo_init);

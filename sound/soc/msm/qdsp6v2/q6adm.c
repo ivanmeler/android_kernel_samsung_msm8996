@@ -2384,7 +2384,7 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 	int port_idx, copp_idx, flags;
 	int tmp_port = q6audio_get_port_id(port_id);
 
-	pr_debug("%s:port %#x path:%d rate:%d mode:%d perf_mode:%d,topo_id %d\n",
+	pr_info("%s:port %#x path:%d rate:%d mode:%d perf_mode:%d,topo_id %d\n",
 		 __func__, port_id, path, rate, channel_mode, perf_mode,
 		 topology);
 
@@ -2431,7 +2431,15 @@ int adm_open(int port_id, int path, int rate, int channel_mode, int topology,
 
 	if ((topology == VPM_TX_SM_ECNS_COPP_TOPOLOGY) ||
 	    (topology == VPM_TX_DM_FLUENCE_COPP_TOPOLOGY) ||
-	    (topology == VPM_TX_DM_RFECNS_COPP_TOPOLOGY))
+	    (topology == VPM_TX_DM_RFECNS_COPP_TOPOLOGY)
+#ifdef CONFIG_SEC_VOC_SOLUTION
+	    || (topology == VPM_TX_SM_LVVEFQ_COPP_TOPOLOGY)
+	    || (topology == VPM_TX_DM_LVVEFQ_COPP_TOPOLOGY)
+	    || (topology == VPM_TX_SM_LVSAFQ_COPP_TOPOLOGY)
+	    || (topology == VOICE_TX_DIAMONDVOICE_FVSAM_DM)
+	    || (topology == VOICE_TX_DIAMONDVOICE_FVSAM_QM)
+#endif /* CONFIG_SEC_VOC_SOLUTION */
+	    )
 		rate = 16000;
 
 	copp_idx = adm_get_idx_if_copp_exists(port_idx, topology, perf_mode,

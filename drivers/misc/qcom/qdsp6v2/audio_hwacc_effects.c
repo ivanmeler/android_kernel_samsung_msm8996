@@ -161,7 +161,6 @@ static int audio_effects_shared_ioctl(struct file *file, unsigned cmd,
 			pr_err("%s: Read buffer Allocation failed rc = %d\n",
 				__func__, rc);
 			rc = -ENOMEM;
-			mutex_unlock(&effects->lock);
 			goto readbuf_fail;
 		}
 		atomic_set(&effects->out_count, effects->config.output.num_buf);
@@ -176,7 +175,6 @@ static int audio_effects_shared_ioctl(struct file *file, unsigned cmd,
 		if (rc < 0) {
 			pr_err("%s: pcm read block config failed\n", __func__);
 			rc = -EINVAL;
-			mutex_unlock(&effects->lock);
 			goto cfg_fail;
 		}
 		pr_debug("%s: dec: sample_rate: %d, num_channels: %d, bit_width: %d\n",
@@ -191,7 +189,6 @@ static int audio_effects_shared_ioctl(struct file *file, unsigned cmd,
 			pr_err("%s: pcm write format block config failed\n",
 				__func__);
 			rc = -EINVAL;
-			mutex_unlock(&effects->lock);
 			goto cfg_fail;
 		}
 
@@ -226,7 +223,7 @@ static int audio_effects_shared_ioctl(struct file *file, unsigned cmd,
 		if (!rc) {
 			pr_err("%s: write wait_event_timeout\n", __func__);
 			rc = -EFAULT;
-			 mutex_unlock(&effects->lock);
+			mutex_unlock(&effects->lock);
 			goto ioctl_fail;
 		}
 		if (!atomic_read(&effects->out_count)) {
@@ -325,6 +322,7 @@ ioctl_fail:
 readbuf_fail:
 	q6asm_audio_client_buf_free_contiguous(IN,
 					effects->ac);
+	mutex_unlock(&effects->lock);
 	return rc;
 cfg_fail:
 	q6asm_audio_client_buf_free_contiguous(IN,
@@ -332,6 +330,7 @@ cfg_fail:
 	q6asm_audio_client_buf_free_contiguous(OUT,
 					effects->ac);
 	effects->buf_alloc = 0;
+	mutex_unlock(&effects->lock);
 	return rc;
 }
 
@@ -711,6 +710,7 @@ static int audio_effects_release(struct inode *inode, struct file *file)
 	q6asm_audio_client_free(effects->ac);
 
 	mutex_destroy(&effects->lock);
+
 	kfree(effects);
 
 	pr_debug("%s: close session success\n", __func__);
@@ -741,6 +741,8 @@ static int audio_effects_open(struct inode *inode, struct file *file)
 
 	init_waitqueue_head(&effects->read_wait);
 	init_waitqueue_head(&effects->write_wait);
+	mutex_init(&effects->lock);
+
 	mutex_init(&effects->lock);
 
 	effects->opened = 0;

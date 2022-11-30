@@ -8482,7 +8482,6 @@ static void perf_event_exit_cpu(int cpu)
 {
 	perf_event_exit_cpu_context(cpu);
 }
-
 #else
 static inline void perf_event_exit_cpu(int cpu) { }
 static inline void perf_event_start_swclock(int cpu) { }

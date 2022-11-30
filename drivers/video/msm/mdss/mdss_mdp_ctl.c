@@ -1151,6 +1151,7 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 		(pipe->flags & MDP_SOLID_FILL)) {
 		perf->prefill_bytes = 0;
 		perf->bw_prefill = 0;
+		perf->bw_overlap = 0;
 		goto exit;
 	}
 
@@ -2307,6 +2308,8 @@ static void mdss_mdp_ctl_perf_update(struct mdss_mdp_ctl *ctl,
 			update_bus = 1;
 		}
 
+		MDSS_XLOG(is_bw_released,params_changed,old->mdp_clk_rate,new->mdp_clk_rate,old->bw_ctl/1000,new->bw_ctl/1000 );
+
 		/*
 		 * If traffic shaper is enabled, we do not decrease the clock,
 		 * otherwise we would increase traffic shaper latency. Clock
@@ -2346,6 +2349,8 @@ static void mdss_mdp_ctl_perf_update(struct mdss_mdp_ctl *ctl,
 		mdss_mdp_set_clk_rate(clk_rate);
 		pr_debug("update clk rate = %d HZ\n", clk_rate);
 	}
+
+	MDSS_XLOG(update_clk,update_bus);
 
 end:
 	mutex_unlock(&mdss_mdp_ctl_lock);
@@ -2406,6 +2411,8 @@ int mdss_mdp_ctl_free(struct mdss_mdp_ctl *ctl)
 		mdss_mdp_wb_free(ctl->wb);
 
 	mutex_lock(&mdss_mdp_ctl_lock);
+	if (ctl->cpu_pm_hdl)
+		destroy_event_timer(ctl->cpu_pm_hdl);
 	ctl->ref_cnt--;
 	ctl->intf_num = MDSS_MDP_NO_INTF;
 	ctl->intf_type = MDSS_MDP_NO_INTF;
@@ -3007,6 +3014,7 @@ static void __dsc_config_thresh(struct mdss_mdp_mixer *mixer,
 	}
 }
 
+/* called for each ctl */
 static bool __is_dsc_merge_enabled(u32 common_mode)
 {
 	return common_mode & BIT(1);
@@ -3048,12 +3056,10 @@ static void __dsc_get_pic_dim(struct mdss_mdp_mixer *mixer_l,
 
 	*pic_w = 0;
 	*pic_h = 0;
-
 	if (valid_l) {
 		*pic_w = mixer_l->roi.w;
 		*pic_h = mixer_l->roi.h;
 	}
-
 	if (valid_r) {
 		*pic_w += mixer_r->roi.w;
 		*pic_h = mixer_r->roi.h;
@@ -3974,12 +3980,22 @@ static void mdss_mdp_ctl_restore_sub(struct mdss_mdp_ctl *ctl)
 {
 	u32 temp;
 	int ret = 0;
+	uint32_t nrt_vbif_client_sel;
+	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
+
+	nrt_vbif_client_sel = readl_relaxed(mdata->mdp_base +
+				MMSS_MDP_RT_NRT_VBIF_CLIENT_SEL);
+	MDSS_XLOG(ctl->num, ctl->play_cnt, nrt_vbif_client_sel, 0x111);
 
 	temp = readl_relaxed(ctl->mdata->mdp_base +
 			MDSS_MDP_REG_DISP_INTF_SEL);
 	temp |= (ctl->intf_type << ((ctl->intf_num - MDSS_MDP_INTF0) * 8));
 	writel_relaxed(temp, ctl->mdata->mdp_base +
 			MDSS_MDP_REG_DISP_INTF_SEL);
+
+	nrt_vbif_client_sel = readl_relaxed(mdata->mdp_base +
+				MMSS_MDP_RT_NRT_VBIF_CLIENT_SEL);
+	MDSS_XLOG(ctl->num, ctl->play_cnt, nrt_vbif_client_sel, 0x222);
 
 	if (ctl->mfd && ctl->panel_data) {
 		ctl->mfd->ipc_resume = true;
@@ -4027,6 +4043,7 @@ void mdss_mdp_ctl_restore(bool locked)
 
 	for (cnum = MDSS_MDP_CTL0; cnum < mdata->nctl; cnum++) {
 		ctl = mdata->ctl_off + cnum;
+		MDSS_XLOG(ctl->num, 0x111);
 		if (!mdss_mdp_ctl_is_power_on(ctl))
 			continue;
 
@@ -4406,9 +4423,11 @@ static void mdss_mdp_set_mixer_roi(struct mdss_mdp_mixer *mixer,
 		mixer->roi_changed = true;
 	}
 
-	pr_debug("mixer%d ROI %s: [%d, %d, %d, %d]\n",
-		mixer->num, mixer->roi_changed ? "changed" : "not changed",
-		mixer->roi.x, mixer->roi.y, mixer->roi.w, mixer->roi.h);
+	if (mixer->roi_changed)
+		pr_debug("mixer%d ROI %s: [%d, %d, %d, %d]\n",
+			mixer->num, mixer->roi_changed ? "changed" : "not changed",
+			mixer->roi.x, mixer->roi.y, mixer->roi.w, mixer->roi.h);
+
 	MDSS_XLOG(mixer->num, mixer->roi_changed, mixer->valid_roi,
 		mixer->roi.x, mixer->roi.y, mixer->roi.w, mixer->roi.h);
 }
@@ -4419,6 +4438,9 @@ void mdss_mdp_set_roi(struct mdss_mdp_ctl *ctl,
 {
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	enum mdss_mdp_pu_type previous_frame_pu_type, current_frame_pu_type;
+	bool mixer_changed;
+	ctl->mixer_cfg_changed = 0;
+	mixer_changed = mdss_mdp_is_both_lm_valid(ctl);
 
 	/* Reset ROI when we have (1) invalid ROI (2) feature disabled */
 	if ((!l_roi->w && l_roi->h) || (l_roi->w && !l_roi->h) ||
@@ -4473,6 +4495,8 @@ void mdss_mdp_set_roi(struct mdss_mdp_ctl *ctl,
 	 * Force HW programming whenever partial update type changes
 	 * between two consecutive frames to avoid incorrect HW programming.
 	 */
+	if(mixer_changed!=mdss_mdp_is_both_lm_valid(ctl))
+		ctl->mixer_cfg_changed = 1;
 	if (is_split_lm(ctl->mfd) && mdata->has_src_split &&
 	    (previous_frame_pu_type != current_frame_pu_type)) {
 		if (ctl->mixer_left)
@@ -5517,9 +5541,8 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 		} else {
 			sctl_flush_bits = sctl->flush_bits;
 		}
-		sctl->commit_in_progress = true;
 	}
-	ctl->commit_in_progress = true;
+	MDSS_XLOG(ctl->commit_in_progress);
 	ctl_flush_bits = ctl->flush_bits;
 
 	ATRACE_END("postproc_programming");
@@ -5533,6 +5556,11 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 			MDP_COMMIT_STAGE_SETUP_DONE,
 			commit_cb->data);
 	ret = mdss_mdp_ctl_notify(ctl, MDP_NOTIFY_FRAME_READY);
+
+	ctl->commit_in_progress = true;
+	if (sctl)
+		sctl->commit_in_progress = true;
+	MDSS_XLOG(ctl->commit_in_progress);
 
 	/*
 	 * When wait for fence timed out, driver ignores the fences
@@ -5668,6 +5696,7 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 		sctl->commit_in_progress = false;
 	}
 	ctl->commit_in_progress = false;
+	MDSS_XLOG(ctl->commit_in_progress);
 
 	MDSS_XLOG(ctl->intf_num, ctl_flush_bits, sctl_flush_bits,
 		split_lm_valid);
