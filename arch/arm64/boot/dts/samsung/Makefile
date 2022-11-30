@@ -137,39 +137,73 @@ dtb-y = msm8996-sec-hero2qlte-jpn-dcm-r00.dtb \
                          msm8996-sec-hero2qlte-jpn-dcm-r15.dtb
 endif
 
-ifeq ($(filter y,$(CONFIG_MACH_HEROQLTE_CHNZC)),y)
-dtb-y = msm8996-sec-heroqlte-r00.dtb \
-			 msm8996-sec-heroqlte-r01.dtb \
-			 msm8996-sec-heroqlte-r02.dtb \
-			 msm8996-sec-heroqlte-r03.dtb \
-			 msm8996-sec-heroqlte-chn-r05.dtb \
-			 msm8996-sec-heroqlte-chn-r06.dtb \
-			 msm8996-sec-heroqlte-chn-r07.dtb \
-			 msm8996-sec-heroqlte-chn-r08.dtb \
-			 msm8996-sec-heroq-r09.dtb \
-			 msm8996-sec-heroq-r09-v3.dtb \
-			 msm8996-sec-heroqlte-chn-r10.dtb \
-			 msm8996-sec-heroqlte-chn-r11.dtb \
-			 msm8996-sec-heroqlte-chn-r13.dtb \
-			 msm8996-sec-heroqlte-chn-r15.dtb
+#ifeq ($(filter y,$(CONFIG_MACH_HEROQLTE_CHNZC)),y)
+#dtb-y = msm8996-sec-heroqlte-r00.dtb \
+#			 msm8996-sec-heroqlte-r01.dtb \
+#			 msm8996-sec-heroqlte-r02.dtb \
+#			 msm8996-sec-heroqlte-r03.dtb \
+#			 msm8996-sec-heroqlte-chn-r05.dtb \
+#			 msm8996-sec-heroqlte-chn-r06.dtb \
+#			 msm8996-sec-heroqlte-chn-r07.dtb \
+#			 msm8996-sec-heroqlte-chn-r08.dtb \
+#			 msm8996-sec-heroq-r09.dtb \
+#			 msm8996-sec-heroq-r09-v3.dtb \
+#			 msm8996-sec-heroqlte-chn-r10.dtb \
+#			 msm8996-sec-heroqlte-chn-r11.dtb \
+#			 msm8996-sec-heroqlte-chn-r13.dtb \
+#			 msm8996-sec-heroqlte-chn-r15.dtb
+#
+#endif
 
+ifeq ($(filter y,$(CONFIG_MACH_HEROQLTE_CHNZC)),y)
+dtb-y = HEROQ_LTE_PROJECT_Rev00.dtb \
+                        HEROQ_LTE_PROJECT_Rev01.dtb \
+                        HEROQ_LTE_PROJECT_Rev02.dtb \
+                        HEROQ_LTE_PROJECT_Rev03.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev05.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev06.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev07.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev08.dtb \
+                        HEROQ_PROJECT_Rev09.dtb \
+                        HEROQ_PROJECT_Rev09_V3.1.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev10.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev11.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev13.dtb \
+                        HEROQ_LTE_CHN_PROJECT_Rev15.dtb
 endif
 
+#ifeq ($(filter y,$(CONFIG_MACH_HERO2QLTE_CHNZC)),y)
+#dtb-y = msm8996-sec-hero2qlte-r00.dtb \
+#			 msm8996-sec-hero2qlte-r01.dtb \
+#			 msm8996-sec-hero2qlte-r02.dtb \
+#			 msm8996-sec-hero2qlte-r03.dtb \
+#			 msm8996-sec-hero2qlte-chn-r05.dtb \
+#			 msm8996-sec-hero2qlte-chn-r06.dtb \
+#			 msm8996-sec-hero2qlte-chn-r07.dtb \
+#			 msm8996-sec-hero2qlte-chn-r08.dtb \
+#			 msm8996-sec-heroq-r09.dtb \
+#			 msm8996-sec-heroq-r09-v3.dtb \
+#			 msm8996-sec-hero2qlte-chn-r10.dtb \
+#			 msm8996-sec-hero2qlte-chn-r11.dtb \
+#			 msm8996-sec-hero2qlte-chn-r13.dtb \
+#			 msm8996-sec-hero2qlte-chn-r15.dtb
+#endif
+
 ifeq ($(filter y,$(CONFIG_MACH_HERO2QLTE_CHNZC)),y)
-dtb-y = msm8996-sec-hero2qlte-r00.dtb \
-			 msm8996-sec-hero2qlte-r01.dtb \
-			 msm8996-sec-hero2qlte-r02.dtb \
-			 msm8996-sec-hero2qlte-r03.dtb \
-			 msm8996-sec-hero2qlte-chn-r05.dtb \
-			 msm8996-sec-hero2qlte-chn-r06.dtb \
-			 msm8996-sec-hero2qlte-chn-r07.dtb \
-			 msm8996-sec-hero2qlte-chn-r08.dtb \
-			 msm8996-sec-heroq-r09.dtb \
-			 msm8996-sec-heroq-r09-v3.dtb \
-			 msm8996-sec-hero2qlte-chn-r10.dtb \
-			 msm8996-sec-hero2qlte-chn-r11.dtb \
-			 msm8996-sec-hero2qlte-chn-r13.dtb \
-			 msm8996-sec-hero2qlte-chn-r15.dtb
+dtb-y = HERO2Q_LTE_PROJECT_Rev00.dtb \
+                        HERO2Q_LTE_PROJECT_Rev01.dtb \
+                        HERO2Q_LTE_PROJECT_Rev02.dtb \
+                        HERO2Q_LTE_PROJECT_Rev03.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev05.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev06.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev07.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev08.dtb \
+                        HEROQ_PROJECT_Rev09.dtb \
+                        HEROQ_PROJECT_Rev09_V3.1.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev10.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev11.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev13.dtb \
+                        HERO2Q_LTE_CHN_PROJECT_Rev15.dtb
 endif
 
 ifeq ($(CONFIG_ARM64),y)
