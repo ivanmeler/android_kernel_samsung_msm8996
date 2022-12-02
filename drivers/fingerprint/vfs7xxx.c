@@ -853,7 +853,6 @@ static long vfsspi_ioctl(struct file *filp, unsigned int cmd,
 	int ret_val = 0;
 	struct vfsspi_device_data *vfsspi_device = NULL;
 #ifdef ENABLE_SENSORS_FPRINT_SECURE
-	unsigned int onoff = 0;
 	unsigned int type_check = -1;
 	unsigned int lockscreen_mode = 0;
 #endif
