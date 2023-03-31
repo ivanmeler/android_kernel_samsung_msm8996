@@ -11219,11 +11219,7 @@ static const struct wiphy_wowlan_support brcm_wowlan_support = {
 static s32 wl_setup_wiphy(struct wireless_dev *wdev, struct device *sdiofunc_dev, void *context)
 {
 	s32 err = 0;
-#ifdef CONFIG_PM
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
 	struct cfg80211_wowlan *brcm_wowlan_config = NULL;
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0) */
-#endif /* CONFIG_PM */
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0) || defined(WL_COMPAT_WIRELESS))
 	dhd_pub_t *dhd = (dhd_pub_t *)context;
