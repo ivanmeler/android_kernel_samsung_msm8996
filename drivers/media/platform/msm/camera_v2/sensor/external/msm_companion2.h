@@ -66,7 +66,7 @@ enum {
 };
 #if 1
 char *companion_fw_path[] = {
-        "/system/etc/firmware/",
+        "/vendor/etc/firmware/",
         "/data/media/0/",
 };
 #else
