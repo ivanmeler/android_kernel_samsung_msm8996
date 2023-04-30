@@ -99,7 +99,7 @@ struct msm_camera_power_ctrl_t *g_ois_power_info;
 #endif
 #define OIS_HW_VERSION_SIZE     (3)
 #define OIS_DEBUG_INFO_SIZE     (40)
-#define OIS_FW_PATH "/system/etc/firmware"
+#define OIS_FW_PATH "/vendor/etc/firmware"
 #define OIS_FW_DOM_NAME "ois_fw_dom.bin"
 #define OIS_FW_SEC_NAME "ois_fw_sec.bin"
 #define SYSFS_OIS_DEBUG_PATH  "/sys/class/camera/ois/ois_exif"
