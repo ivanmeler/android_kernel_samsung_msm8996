@@ -13,7 +13,7 @@ obj-$(CONFIG_DISPLAY_USE_INFO) += ss_dpui_common.o
 #
 
 # TO SUPPORT PBA BOOINT
-obj-y += PBA_BOOTING_HD/
+#obj-y += PBA_BOOTING_HD/
 
 # Veyron_CHN panel
 obj-$(CONFIG_PANEL_S6E3FA5_AMS420MS01_FHD) += S6E3FA5_AMS420MS01/
