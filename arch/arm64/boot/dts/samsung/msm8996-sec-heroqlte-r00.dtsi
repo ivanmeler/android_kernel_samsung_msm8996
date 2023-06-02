@@ -1259,7 +1259,6 @@
 #include "../../../../drivers/video/msm/mdss/samsung/S6E3HF4_AMB526JS01/dsi_panel_S6E3HF4_AMB526JS01_wqhd_octa_cmd.dtsi"
 #include "../../../../drivers/video/msm/mdss/samsung/S6E3HA2_AMS509ES01/dsi_panel_S6E3HA2_AMS509ES01_wqhd_octa_cmd.dtsi"
 #include "../../../../drivers/video/msm/mdss/samsung/S6E3HA3_AMS567JA01/dsi_panel_S6E3HA3_AMS567JA01_wqhd_octa_cmd.dtsi"
-#include "../../../../drivers/video/msm/mdss/samsung/PBA_BOOTING_HD/dsi_panel_PBA_BOOTING_hd_video.dtsi"
 
 &ss_dsi_panel_S6E3HF4_AMB526JS01_WQHD {
 	qcom,panel-supply-entries {
@@ -1394,11 +1393,11 @@
 };
 
 &mdss_dsi {
-	hw-config = "split_dsi";
+	hw-config = "single_dsi";
 };
 
 &mdss_dsi0 {
-	qcom,dsi-pref-prim-pan = <&ss_dsi_panel_S6E3HA2_AMS509ES01_WQHD>;
+	qcom,dsi-pref-prim-pan = <&ss_dsi_panel_S6E3HF4_AMB526JS01_WQHD>;
 
 	qcom,platform-te-gpio = <&tlmm 10 0>;
 	qcom,platform-reset-gpio = <&tlmm 143 0>;
@@ -1418,14 +1417,7 @@
 };
 
 &mdss_dsi1 {
-	qcom,dsi-pref-prim-pan = <&ss_dsi_panel_S6E3HA2_AMS509ES01_WQHD>;
-};
-
-&mdss_mdp {
-	qcom,mdss-pref-prim-intf = "dsi";
-	mdss_fb0: qcom,mdss_fb_primary {
-		qcom,mdss-fb-split = <720 720>;
-	};
+	qcom,dsi-pref-prim-pan = <&ss_dsi_panel_S6E3HF4_AMB526JS01_WQHD>;
 };
 
 &spmi_bus {
