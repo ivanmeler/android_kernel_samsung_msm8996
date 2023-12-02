@@ -22,8 +22,8 @@
 		qcom,mdss-dsi-panel-name = "ss_dsi_panel_PBA_BOOTING_HD";
 
 		qcom,mdss-dsi-panel-controller = <&mdss_dsi0>;
-		qcom,mdss-dsi-panel-width = <1080>;
-		qcom,mdss-dsi-panel-height = <1920>;
+		qcom,mdss-dsi-panel-width = <1440>;
+		qcom,mdss-dsi-panel-height = <2560>;
 		qcom,mdss-dsi-bpp = <24>;
 		qcom,mdss-dsi-panel-destination = "display_1";
 
@@ -115,11 +115,11 @@
 		qcom,mdss-dsi-mdp-trigger = "none";
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
 		qcom,mdss-dsi-panel-framerate = <60>;
-		qcom,mdss-dsi-panel-clockrate = <380000000>;
+		qcom,mdss-dsi-panel-clockrate = <950000000>;
 		qcom,mdss-dsi-on-command-state = "dsi_hs_mode";
 		qcom,mdss-dsi-off-command-state = "dsi_hs_mode";
-		qcom,mdss-pan-physical-width-dimension = <60>;
-		qcom,mdss-pan-physical-height-dimension = <106>;
+		qcom,mdss-pan-physical-width-dimension = <68>;
+		qcom,mdss-pan-physical-height-dimension = <122>;
 		qcom,mdss-dsi-panel-mode-gpio-state = "invalid";
 		/*qcom,mdss-tear-check-disable; */
 		/*qcom,mdss-tear-check-sync-cfg-height = */
